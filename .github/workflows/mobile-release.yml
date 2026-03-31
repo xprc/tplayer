@@ -9,9 +9,19 @@ on:
 jobs:
   upload-android-apk:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Ensure this workflow runs on a tag
+        shell: bash
+        run: |
+          if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+            echo "This workflow must run on a tag ref."
+            exit 1
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -64,9 +74,48 @@ jobs:
         shell: bash
         run: find src-tauri/gen/android -type f -name "*.apk"
 
-      - name: Upload debug APK artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-debug-apks-${{ github.ref_name || github.sha }}
-          path: src-tauri/gen/android/**/build/outputs/apk/**/*.apk
-          if-no-files-found: error
+      - name: Rename APKs for release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION="${GITHUB_REF_NAME#v}"
+          APP_NAME="TPlayer"
+
+          mkdir -p release-assets
+
+          while IFS= read -r -d '' file; do
+            base="$(basename "$file")"
+            arch=""
+
+            case "$base" in
+              *arm64-v8a*)
+                arch="arm64"
+                ;;
+              *armeabi-v7a*)
+                arch="armv7"
+                ;;
+              *x86_64*)
+                arch="x64"
+                ;;
+              *x86*)
+                arch="x86"
+                ;;
+              *)
+                echo "Skip unknown ABI file: $file"
+                continue
+                ;;
+            esac
+
+            cp "$file" "release-assets/${APP_NAME}-${VERSION}-android-${arch}.apk"
+          done < <(find src-tauri/gen/android -type f -name "*.apk" -print0)
+
+          echo "Prepared release assets:"
+          ls -lah release-assets
+      - name: Upload APKs to GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release upload "${GITHUB_REF_NAME}" release-assets/*.apk --clobber
