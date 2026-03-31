@@ -78,21 +78,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
+      
           VERSION="${GITHUB_REF_NAME#v}"
           APP_NAME="TPlayer"
-
+      
           mkdir -p release-assets
-
+      
           while IFS= read -r -d '' file; do
             base="$(basename "$file")"
             arch=""
-
+      
             case "$base" in
-              *arm64-v8a*)
+              *arm64-v8a*|*arm64*)
                 arch="arm64"
                 ;;
-              *armeabi-v7a*)
+              *armeabi-v7a*|*app-arm-debug.apk*|*arm-*)
                 arch="armv7"
                 ;;
               *x86_64*)
@@ -106,12 +106,13 @@ jobs:
                 continue
                 ;;
             esac
-
+      
             cp "$file" "release-assets/${APP_NAME}-${VERSION}-android-${arch}.apk"
           done < <(find src-tauri/gen/android -type f -name "*.apk" -print0)
-
+      
           echo "Prepared release assets:"
           ls -lah release-assets
+      
       - name: Upload APKs to GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
