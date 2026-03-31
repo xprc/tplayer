@@ -15,16 +15,43 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest
-            args: --target aarch64-apple-darwin
-          - platform: macos-latest
-            args: --target x86_64-apple-darwin
-          - platform: ubuntu-22.04
-            args: ''
-          - platform: windows-latest
-            args: ''
+          # macOS
+          - runner: macos-latest
+            rust_target: aarch64-apple-darwin
+            asset_platform: macos
+            asset_arch: arm64
+            asset_setup_suffix: ''
+          - runner: macos-15-intel
+            rust_target: x86_64-apple-darwin
+            asset_platform: macos
+            asset_arch: x64
+            asset_setup_suffix: ''
 
-    runs-on: ${{ matrix.platform }}
+          # Windows
+          - runner: windows-11-arm
+            rust_target: aarch64-pc-windows-msvc
+            asset_platform: windows
+            asset_arch: arm64
+            asset_setup_suffix: '[setup]'
+          - runner: windows-latest
+            rust_target: x86_64-pc-windows-msvc
+            asset_platform: windows
+            asset_arch: x64
+            asset_setup_suffix: '[setup]'
+
+          # Linux
+          - runner: ubuntu-24.04-arm
+            rust_target: aarch64-unknown-linux-gnu
+            asset_platform: linux
+            asset_arch: arm64
+            asset_setup_suffix: ''
+          - runner: ubuntu-22.04
+            rust_target: x86_64-unknown-linux-gnu
+            asset_platform: linux
+            asset_arch: x64
+            asset_setup_suffix: ''
+
+    runs-on: ${{ matrix.runner }}
 
     steps:
       - uses: actions/checkout@v4
@@ -37,7 +64,7 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: ${{ matrix.rust_target }}
 
       - name: Setup Rust cache
         uses: Swatinem/rust-cache@v2
@@ -45,7 +72,7 @@ jobs:
           workspaces: src-tauri
 
       - name: Install Linux system dependencies
-        if: matrix.platform == 'ubuntu-22.04'
+        if: startsWith(matrix.runner, 'ubuntu-')
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -63,9 +90,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: TPlayer Release ${{ github.ref_name }}
+          releaseName: TPlayer ${{ github.ref_name }}
           releaseBody: See the assets to download this version.
           generateReleaseNotes: true
           releaseDraft: false
-          prerelease: false
-          args: ${{ matrix.args }}
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          args: --target ${{ matrix.rust_target }}
+          releaseAssetNamePattern: '[name]-[version]-[platform]-[arch][ext]'
