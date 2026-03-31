@@ -93,17 +93,17 @@ jobs:
         shell: bash
         run: find "src-tauri/target/${{ matrix.rust_target }}/release/bundle" -type f | sort || true
 
-      - name: Rename bundle files for release
+      - name: Rename distributable bundle files for release
         shell: bash
         run: |
           set -euo pipefail
-
+      
           VERSION="${GITHUB_REF_NAME#v}"
           APP_NAME="TPlayer"
           BUNDLE_DIR="src-tauri/target/${{ matrix.rust_target }}/release/bundle"
-
+      
           mkdir -p release-assets
-
+      
           map_ext() {
             local file="$1"
             case "$file" in
@@ -119,18 +119,24 @@ jobs:
               *.rpm) echo ".rpm" ;;
               *.msi.sig) echo ".msi.sig" ;;
               *.msi) echo ".msi" ;;
+              *-setup.exe.sig) echo "-setup.exe.sig" ;;
+              *-setup.exe) echo "-setup.exe" ;;
               *.exe.sig) echo ".exe.sig" ;;
               *.exe) echo ".exe" ;;
-              *.sig) echo ".sig" ;;
-              *) echo ".${file##*.}" ;;
+              *) return 1 ;;
             esac
           }
-
+      
           while IFS= read -r -d '' file; do
             base="$(basename "$file")"
-            ext="$(map_ext "$base")"
+      
+            if ! ext="$(map_ext "$base")"; then
+              echo "Skip non-distributable file: $base"
+              continue
+            fi
+      
             dest="release-assets/${APP_NAME}-${VERSION}-${{ matrix.platform_name }}-${{ matrix.arch_name }}${ext}"
-
+      
             if [ -e "$dest" ]; then
               i=2
               while [ -e "release-assets/${APP_NAME}-${VERSION}-${{ matrix.platform_name }}-${{ matrix.arch_name }}-${i}${ext}" ]; do
@@ -138,10 +144,10 @@ jobs:
               done
               dest="release-assets/${APP_NAME}-${VERSION}-${{ matrix.platform_name }}-${{ matrix.arch_name }}-${i}${ext}"
             fi
-
+      
             cp "$file" "$dest"
           done < <(find "$BUNDLE_DIR" -type f -print0)
-
+      
           echo "Prepared release assets:"
           ls -lah release-assets
 
