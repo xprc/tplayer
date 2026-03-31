@@ -15,51 +15,53 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # macOS
           - runner: macos-latest
             rust_target: aarch64-apple-darwin
-            asset_platform: macos
-            asset_arch: arm64
-            asset_setup_suffix: ''
+            platform_name: macos
+            arch_name: arm64
+
           - runner: macos-15-intel
             rust_target: x86_64-apple-darwin
-            asset_platform: macos
-            asset_arch: x64
-            asset_setup_suffix: ''
+            platform_name: macos
+            arch_name: x64
 
-          # Windows
           - runner: windows-11-arm
             rust_target: aarch64-pc-windows-msvc
-            asset_platform: windows
-            asset_arch: arm64
-            asset_setup_suffix: '[setup]'
+            platform_name: windows
+            arch_name: arm64
+
           - runner: windows-latest
             rust_target: x86_64-pc-windows-msvc
-            asset_platform: windows
-            asset_arch: x64
-            asset_setup_suffix: '[setup]'
+            platform_name: windows
+            arch_name: x64
 
-          # Linux
           - runner: ubuntu-24.04-arm
             rust_target: aarch64-unknown-linux-gnu
-            asset_platform: linux
-            asset_arch: arm64
-            asset_setup_suffix: ''
+            platform_name: linux
+            arch_name: arm64
+
           - runner: ubuntu-22.04
             rust_target: x86_64-unknown-linux-gnu
-            asset_platform: linux
-            asset_arch: x64
-            asset_setup_suffix: ''
+            platform_name: linux
+            arch_name: x64
 
     runs-on: ${{ matrix.runner }}
 
     steps:
       - uses: actions/checkout@v4
 
+      - name: Ensure this workflow runs on a tag
+        shell: bash
+        run: |
+          if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+            echo "This workflow must run on a tag ref."
+            exit 1
+          fi
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: lts/*
+          node-version: 24
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -84,16 +86,95 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build and upload desktop release
-        uses: tauri-apps/tauri-action@v0
+      - name: Build desktop bundle
+        run: npm run tauri build -- --target ${{ matrix.rust_target }}
+
+      - name: Show generated bundle files
+        shell: bash
+        run: find "src-tauri/target/${{ matrix.rust_target }}/release/bundle" -type f | sort || true
+
+      - name: Rename bundle files for release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION="${GITHUB_REF_NAME#v}"
+          APP_NAME="TPlayer"
+          BUNDLE_DIR="src-tauri/target/${{ matrix.rust_target }}/release/bundle"
+
+          mkdir -p release-assets
+
+          map_ext() {
+            local file="$1"
+            case "$file" in
+              *.app.tar.gz.sig) echo ".app.tar.gz.sig" ;;
+              *.app.tar.gz) echo ".app.tar.gz" ;;
+              *.AppImage.sig) echo ".AppImage.sig" ;;
+              *.AppImage) echo ".AppImage" ;;
+              *.dmg.sig) echo ".dmg.sig" ;;
+              *.dmg) echo ".dmg" ;;
+              *.deb.sig) echo ".deb.sig" ;;
+              *.deb) echo ".deb" ;;
+              *.rpm.sig) echo ".rpm.sig" ;;
+              *.rpm) echo ".rpm" ;;
+              *.msi.sig) echo ".msi.sig" ;;
+              *.msi) echo ".msi" ;;
+              *.exe.sig) echo ".exe.sig" ;;
+              *.exe) echo ".exe" ;;
+              *.sig) echo ".sig" ;;
+              *) echo ".${file##*.}" ;;
+            esac
+          }
+
+          while IFS= read -r -d '' file; do
+            base="$(basename "$file")"
+            ext="$(map_ext "$base")"
+            dest="release-assets/${APP_NAME}-${VERSION}-${{ matrix.platform_name }}-${{ matrix.arch_name }}${ext}"
+
+            if [ -e "$dest" ]; then
+              i=2
+              while [ -e "release-assets/${APP_NAME}-${VERSION}-${{ matrix.platform_name }}-${{ matrix.arch_name }}-${i}${ext}" ]; do
+                i=$((i + 1))
+              done
+              dest="release-assets/${APP_NAME}-${VERSION}-${{ matrix.platform_name }}-${{ matrix.arch_name }}-${i}${ext}"
+            fi
+
+            cp "$file" "$dest"
+          done < <(find "$BUNDLE_DIR" -type f -print0)
+
+          echo "Prepared release assets:"
+          ls -lah release-assets
+
+      - name: Create release if missing
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: TPlayer ${{ github.ref_name }}
-          releaseBody: See the assets to download this version.
-          generateReleaseNotes: true
-          releaseDraft: false
-          prerelease: ${{ contains(github.ref_name, '-') }}
-          args: --target ${{ matrix.rust_target }}
-          releaseAssetNamePattern: '[name]-[version]-[platform]-[arch][ext]'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TAG="${GITHUB_REF_NAME}"
+          TITLE="TPlayer ${TAG}"
+
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release already exists for ${TAG}"
+            exit 0
+          fi
+
+          if [[ "$TAG" == *-* ]]; then
+            gh release create "$TAG" \
+              --title "$TITLE" \
+              --generate-notes \
+              --prerelease
+          else
+            gh release create "$TAG" \
+              --title "$TITLE" \
+              --generate-notes
+          fi
+
+      - name: Upload renamed assets to GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release upload "${GITHUB_REF_NAME}" release-assets/* --clobber
