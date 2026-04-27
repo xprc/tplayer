@@ -1,15 +1,51 @@
 import { useState } from "react";
-import reactLogo from "./assets/react.svg";
 import { invoke } from "@tauri-apps/api/core";
+import type { FlacFileInfo, PlaybackSnapshot } from "./vite-env";
 import "./App.css";
 
+export async function parseFlac(path: string) {
+  return await invoke<FlacFileInfo>("parse_flac", { path });
+}
+
+export async function playFlac(path: string) {
+  await invoke("play_flac", { path });
+}
+
+export async function pausePlayback() {
+  await invoke("pause_playback");
+}
+
+export async function resumePlayback() {
+  await invoke("resume_playback");
+}
+
+export async function stopPlayback() {
+  await invoke("stop_playback");
+}
+
+export async function setVolume(volume: number) {
+  await invoke("set_volume", { volume });
+}
+
+export async function getVolume() {
+  return await invoke<number>("get_volume");
+}
+
+export async function seekTo(positionMs: number) {
+  await invoke("seek_to", { positionMs });
+}
+
+export async function getPlaybackSnapshot() {
+  return await invoke<PlaybackSnapshot>("get_playback_snapshot");
+}
+
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+  const [song, setSong] = useState("");
 
   async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
+    const info = await parseFlac(song);
+    console.log("FLAC info:", info);
+    await playFlac(song);
   }
 
   return (
@@ -17,17 +53,8 @@ function App() {
       <h1>Welcome to Tauri + React</h1>
 
       <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
       </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
+      <p>Flac support.</p>
 
       <form
         className="row"
@@ -38,12 +65,12 @@ function App() {
       >
         <input
           id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
+          onChange={(e) => setSong(e.currentTarget.value)}
+          placeholder="Enter a flac file url..."
         />
-        <button type="submit">Greet</button>
+        <button type="submit">Play</button>
       </form>
-      <p>{greetMsg}</p>
+      <p>{song}</p>
     </main>
   );
 }
