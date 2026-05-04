@@ -1,6 +1,8 @@
+use base64::{engine::general_purpose, Engine as _};
 use lofty::file::{AudioFile, TaggedFileExt};
+use lofty::picture::{Picture, PictureType};
 use lofty::read_from_path;
-use lofty::tag::Accessor;
+use lofty::tag::{Accessor, Tag};
 use rodio::{Decoder, DeviceSinkBuilder, MixerDeviceSink, Player, Source};
 use serde::Serialize;
 use std::fs::File;
@@ -12,6 +14,13 @@ use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CoverImage {
+    mime: String,
+    base64: String,
+}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -141,6 +150,13 @@ fn read_flac_info(path: &Path) -> Result<FlacFileInfo, String> {
     })
 }
 
+fn pick_cover_picture<'a>(tag: &'a Tag) -> Option<&'a Picture> {
+    tag.pictures()
+        .iter()
+        .find(|p| p.pic_type() == PictureType::CoverFront)
+        .or_else(|| tag.pictures().first())
+}
+
 fn unix_ts_ms() -> Result<u64, String> {
     Ok(SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -169,6 +185,29 @@ fn play_flac(path: String, state: tauri::State<AppState>) -> Result<(), String> 
     audio.duration = duration;
 
     Ok(())
+}
+
+#[tauri::command]
+fn get_flac_cover(path: String) -> Result<Option<CoverImage>, String> {
+    let tagged = lofty::read_from_path(&path).map_err(|e| e.to_string())?;
+    let tag = match tagged.primary_tag().or_else(|| tagged.first_tag()) {
+        Some(t) => t,
+        None => return Ok(None),
+    };
+
+    let pic = match pick_cover_picture(tag) {
+        Some(p) => p,
+        None => return Ok(None),
+    };
+
+    let mime = pic
+        .mime_type()
+        .map(|m| m.to_string())
+        .unwrap_or_else(|| "application/octet-stream".to_string());
+
+    let base64 = general_purpose::STANDARD.encode(pic.data());
+
+    Ok(Some(CoverImage { mime, base64 }))
 }
 
 #[tauri::command]
@@ -261,6 +300,7 @@ pub fn run() {
             get_volume,
             seek_to,
             get_playback_snapshot,
+            get_flac_cover,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

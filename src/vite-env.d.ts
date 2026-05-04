@@ -27,3 +27,8 @@ export type PlaybackSnapshot = {
   hasTrack: boolean;
   serverTsMs: number;
 };
+
+export type CoverImage = {
+  mime: string;
+  base64: string;
+};
