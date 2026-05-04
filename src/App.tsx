@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { CoverImage, FlacFileInfo, PlaybackSnapshot } from "./vite-env";
+import { FileMusic, FileTxtOne, Music } from "@icon-park/react";
+import type { CoverImage, FlacFileInfo, PlaybackSnapshot, Word } from "./vite-env";
+import '@icon-park/react/styles/index.css';
 import "./App.css";
 
 export async function parseFlac(path: string) {
@@ -46,11 +48,14 @@ export async function getFlacCover(path: string) {
 function App() {
   const [song, setSong] = useState("");
   const [coverSrc, setCoverSrc] = useState<string>("");
+  const [trackInfo, setTrackInfo] = useState<FlacFileInfo | null>(null);
   const [snap, setSnap] = useState<PlaybackSnapshot | null>(null);
+
+  const lrcInputRef = useRef<HTMLInputElement>(null);
 
   async function loadMetaAndCover(path: string) {
     const info = await parseFlac(path);
-    console.log("FLAC info:", info);
+    setTrackInfo(info);
 
     const cover = await getFlacCover(path);
     setCoverSrc(cover ? `data:${cover.mime};base64,${cover.base64}` : "");
@@ -81,6 +86,34 @@ function App() {
 
   return (
     <main className="container">
+      {coverSrc && (<div className="bg-cover" style={{ backgroundImage: `url(${coverSrc})` }} />)}
+      {/* <input type="file" ref={lrcInputRef} onChange={handleLrcFileUpload} accept=".lrc,.txt" className="hidden" /> */}
+
+      <header>
+        <div className="header-info">
+          {coverSrc ? (
+            <img src={coverSrc} alt="Cover" />
+          ) : (
+            <div className="no-cover">
+              <Music theme="outline" size={24} />
+            </div>
+          )}
+          <div className="song-info">
+            <h1 className="song-title">{trackInfo?.title}</h1>
+            <p className="song-artist">{trackInfo?.artist}</p>
+            {trackInfo?.album && (<p className="song-album">{trackInfo?.album}</p>)}
+          </div>
+        </div>
+        <div className="file-uploader">
+          <button onClick={() => lrcInputRef.current?.click()} title="Upload LRC Lyrics">
+            <FileTxtOne theme="outline" size={18} />
+          </button>
+          <button onClick={() => fileInputRef.current?.click()} title="Upload Audio">
+            <FileMusic theme="outline" size={18} />
+          </button>
+        </div>
+      </header>
+
       <h1>Welcome to Tauri + React</h1>
       <p>Flac support.</p>
 

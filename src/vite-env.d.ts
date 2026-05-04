@@ -32,3 +32,18 @@ export type CoverImage = {
   mime: string;
   base64: string;
 };
+
+export type Word = {
+  content: string;
+  startTime: number;
+  duration: number;
+  endTime: number;
+};
+
+export type LyricLine = {
+  startTime: number;
+  duration: number;
+  endTime: number;
+  content: string;
+  words: Word[];
+};
