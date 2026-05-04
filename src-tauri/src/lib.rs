@@ -1,7 +1,7 @@
 use lofty::file::{AudioFile, TaggedFileExt};
 use lofty::read_from_path;
 use lofty::tag::Accessor;
-use rodio::{Decoder, OutputStream, OutputStreamBuilder, Sink, Source};
+use rodio::{Decoder, DeviceSinkBuilder, MixerDeviceSink, Player, Source};
 use serde::Serialize;
 use std::fs::File;
 use std::io::BufReader;
@@ -53,8 +53,8 @@ struct PlaybackSnapshot {
 }
 
 struct AudioEngine {
-    stream: OutputStream,
-    sink: Sink,
+    stream: MixerDeviceSink,
+    sink: Player,
     current_track: Option<PathBuf>,
     duration: Option<Duration>,
 }
@@ -65,8 +65,8 @@ struct AppState {
 
 impl AudioEngine {
     fn new() -> Result<Self, String> {
-        let stream = OutputStreamBuilder::open_default_stream().map_err(|e| e.to_string())?;
-        let sink = Sink::connect_new(stream.mixer());
+        let stream = DeviceSinkBuilder::open_default_sink().map_err(|e| e.to_string())?;
+        let sink = Player::connect_new(&stream.mixer());
 
         Ok(Self {
             stream,
@@ -81,7 +81,7 @@ impl AudioEngine {
         let paused = self.sink.is_paused();
 
         self.sink.stop();
-        self.sink = Sink::connect_new(self.stream.mixer());
+        self.sink = Player::connect_new(&self.stream.mixer());
         self.sink.set_volume(volume);
 
         if paused {
