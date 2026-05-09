@@ -246,7 +246,7 @@ function App() {
                   {lyrics.map((line, index) => {
                     const isActive = index === activeLineIndex;
                     return (
-                      <li key={index} ref={el => (lineRefs.current[index] = el)} onClick={() => handleLineClick(line.startTime)} className={`${isActive ? 'active' : ''}`}>
+                      <li key={index} ref={el => {lineRefs.current[index] = el}} onClick={() => handleLineClick(line.startTime)} className={`${isActive ? 'active' : ''}`}>
                         <div className="lyrics-line">
                           {line.words.map((word, wIndex) => (
                             <LyricsWord key={`${index}-${wIndex}`} word={word} currentTime={currentTime} active={isActive} />
