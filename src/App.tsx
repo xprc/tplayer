@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
+import { readTextFile } from "@tauri-apps/plugin-fs";
 import { Back, FileMusic, FileTxtOne, Music, Next, Pause, Play, VolumeMute, VolumeNotice } from "@icon-park/react";
 import type { CoverImage, FlacFileInfo, LyricLine, PlaybackSnapshot, Word } from "./vite-env";
 import LyricsWord from "./LyricsWord";
@@ -47,6 +49,39 @@ export async function getFlacCover(path: string) {
   return await invoke<CoverImage | null>("get_flac_cover", { path });
 }
 
+export async function readLyricsFile(): Promise<string | null> {
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    title: "Please open an Lyrics file,,,",
+    filters: [
+      { name: "Lyrics", extensions: ["lrc", "txt"] },
+      { name: "All", extensions: ["*"] }
+    ]
+  });
+  if(!selected) return null;
+
+  const realPath = 
+    typeof selected === "string" && selected.startsWith("file://")
+    ? new URL(selected) : selected;
+  const content = await readTextFile(realPath);
+  return content;
+}
+
+export async function readAudioFile(): Promise<string | null> {
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    title: "Please open an Audio file.,",
+    filters: [
+      { name: "Audio", extensions: ["flac", "mp3", "m4a"] },
+      { name: "All", extensions: ["*"] }
+    ]
+  });
+  if(!selected) return null;
+  return selected;
+}
+
 function App() {
   const [song, setSong] = useState("");
   const [currentTime, setCurrentTime] = useState<number>(0);
@@ -62,11 +97,31 @@ function App() {
   const [activeLineIndex, setActiveLineIndex] = useState<number>(-1);
   const [isUserScrolling, setIsUserScrolling] = useState<boolean>(false);
 
-  const lrcInputRef = useRef<HTMLInputElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const lineRefs = useRef<(HTMLLIElement | null)[]>([]);
   const userScrollTimeoutRef = useRef<number>(0);
+
+  async function loadMetaAndCover(path: string) {
+    const info = await parseFlac(path);
+    setTrackInfo(info);
+    const cover = await getFlacCover(path);
+    setCoverSrc(cover ? `data:${cover.mime};base64,${cover.base64}` : "");
+  }
+
+  const uploadLyrics = async () => {
+    const lyrics = await readLyricsFile();
+    if (!lyrics) return;
+    setRawLyrics(lyrics);
+  };
+
+  const uploadAudio = async () => {
+    const path = await readAudioFile();
+    if (!path) return;
+    const s = await getPlaybackSnapshot();
+    if (s.hasTrack) await stopPlayback();
+    setSong(path);
+    loadMetaAndCover(path);
+  };
 
   // --- Auto Scrolling ---
   useEffect(() => {
@@ -124,14 +179,6 @@ function App() {
     // }
   };
 
-  async function loadMetaAndCover(path: string) {
-    const info = await parseFlac(path);
-    setTrackInfo(info);
-
-    const cover = await getFlacCover(path);
-    setCoverSrc(cover ? `data:${cover.mime};base64,${cover.base64}` : "");
-  }
-
   async function togglePlayPause() {
     const s = await getPlaybackSnapshot();
     setSnap(s);
@@ -158,7 +205,6 @@ function App() {
   return (
     <main className="container">
       {coverSrc && (<div className="bg-cover" style={{ backgroundImage: `url(${coverSrc})` }} />)}
-      {/* <input type="file" ref={lrcInputRef} onChange={handleLrcFileUpload} accept=".lrc,.txt" className="hidden" /> */}
 
       <header>
         <div className="header-info">
@@ -176,10 +222,10 @@ function App() {
           </div>
         </div>
         <div className="file-uploader">
-          <button onClick={() => lrcInputRef.current?.click()} title="Upload LRC Lyrics">
+          <button onClick={() => uploadLyrics()} title="Upload LRC Lyrics">
             <FileTxtOne theme="outline" size={18} />
           </button>
-          <button onClick={() => fileInputRef.current?.click()} title="Upload Audio">
+          <button onClick={() => uploadAudio()} title="Upload Audio">
             <FileMusic theme="outline" size={18} />
           </button>
         </div>
@@ -193,7 +239,7 @@ function App() {
                 <div className="no-lyrics">
                   <Music size={48} className="opacity-50" />
                   <p>No lyrics loaded.</p>
-                  <button onClick={() => fileInputRef.current?.click()}>Upload a song to start</button>
+                  <button onClick={() => uploadAudio()}>Upload a song to start</button>
                 </div>
               ) : (
                 <ul className="song-lyrics-ul">
@@ -264,45 +310,6 @@ function App() {
           </div>
         </div>
       </footer>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          togglePlayPause();
-        }}
-      >
-        <input
-          id="greet-input"
-          value={song}
-          onChange={(e) => setSong(e.currentTarget.value)}
-          placeholder="Enter a flac file path..."
-        />
-        <button type="submit">
-          {snap?.hasTrack ? (snap.paused ? "Resume" : "Pause") : "Play"}
-        </button>
-        <button
-          type="button"
-          onClick={async () => {
-            await stopPlayback();
-            setSnap(await getPlaybackSnapshot());
-          }}
-        >
-          Stop
-        </button>
-      </form>
-
-      {coverSrc ? (
-        <img
-          src={coverSrc}
-          alt="cover"
-          style={{ maxWidth: 240, borderRadius: 12, marginTop: 12 }}
-        />
-      ) : (
-        <div style={{ marginTop: 12, opacity: 0.7 }}>No cover</div>
-      )}
-
-      <p>{song}</p>
     </main>
   );
 }
