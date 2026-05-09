@@ -1,7 +1,9 @@
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { FileMusic, FileTxtOne, Music } from "@icon-park/react";
-import type { CoverImage, FlacFileInfo, PlaybackSnapshot, Word } from "./vite-env";
+import { Back, FileMusic, FileTxtOne, Music, Next, Pause, Play, VolumeMute, VolumeNotice } from "@icon-park/react";
+import type { CoverImage, FlacFileInfo, LyricLine, PlaybackSnapshot, Word } from "./vite-env";
+import LyricsWord from "./LyricsWord";
+import { formatTime, parseLyrics } from "./utils";
 import '@icon-park/react/styles/index.css';
 import "./App.css";
 
@@ -47,11 +49,80 @@ export async function getFlacCover(path: string) {
 
 function App() {
   const [song, setSong] = useState("");
+  const [currentTime, setCurrentTime] = useState<number>(0);
   const [coverSrc, setCoverSrc] = useState<string>("");
   const [trackInfo, setTrackInfo] = useState<FlacFileInfo | null>(null);
   const [snap, setSnap] = useState<PlaybackSnapshot | null>(null);
+  const [rawLyrics, setRawLyrics] = useState<string>("");
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [audioDuration, setAudioDuration] = useState<number>(0);
+  const [volume, setVolume] = useState<number>(1);
+  const [isMuted, setIsMuted] = useState<boolean>(false);
+  const lyrics: LyricLine[] = useMemo(() => parseLyrics(rawLyrics), [rawLyrics]);
+  const [activeLineIndex, setActiveLineIndex] = useState<number>(-1);
+  const [isUserScrolling, setIsUserScrolling] = useState<boolean>(false);
 
   const lrcInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const lineRefs = useRef<(HTMLLIElement | null)[]>([]);
+  const userScrollTimeoutRef = useRef<number>(0);
+
+  // --- Auto Scrolling ---
+  useEffect(() => {
+    if (isUserScrolling) return;
+
+    if (activeLineIndex >= 0 && lineRefs.current[activeLineIndex] && containerRef.current) {
+      const lineEl = lineRefs.current[activeLineIndex];
+      lineEl?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    } else if (activeLineIndex === -1 && containerRef.current) {
+        containerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [activeLineIndex, isUserScrolling]);
+
+  // Listen to wheel/touch events on the container
+  const handleUserInteraction = () => {
+    setIsUserScrolling(true);
+    if (userScrollTimeoutRef.current) {
+      clearTimeout(userScrollTimeoutRef.current);
+    }
+    userScrollTimeoutRef.current = window.setTimeout(() => {
+      setIsUserScrolling(false);
+    }, 2000);
+  };
+
+  // Click on a lyric line to jump to that time
+  const handleLineClick = (startTime: number) => {
+    // Jump slightly before the line starts (e.g. 100ms) to ensure the first word isn't cut off visually
+    const seekTime = Math.max(0, startTime);
+    setCurrentTime(seekTime);
+    
+    // if (audioSrc && audioRef.current) {
+    //     audioRef.current.currentTime = seekTime / 1000;
+    // }
+  };
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newTime = Number(e.target.value);
+    setCurrentTime(newTime);
+    
+    // if (audioSrc && audioRef.current) {
+    //     audioRef.current.currentTime = newTime / 1000;
+    // }
+  };
+
+  const skipTime = (ms: number) => {
+    let newTime = currentTime + ms;
+    newTime = Math.max(0, Math.min(newTime, audioDuration));
+      
+    setCurrentTime(newTime);
+    // if (audioSrc && audioRef.current) {
+    //   audioRef.current.currentTime = newTime / 1000;
+    // }
+  };
 
   async function loadMetaAndCover(path: string) {
     const info = await parseFlac(path);
@@ -114,8 +185,85 @@ function App() {
         </div>
       </header>
 
-      <h1>Welcome to Tauri + React</h1>
-      <p>Flac support.</p>
+      <div className="lyrics-panel">
+        <div>
+          <div ref={containerRef} className="lyrics-container" onWheel={handleUserInteraction} onTouchStart={handleUserInteraction}>
+            <div>
+              {lyrics.length === 0 ? (
+                <div className="no-lyrics">
+                  <Music size={48} className="opacity-50" />
+                  <p>No lyrics loaded.</p>
+                  <button onClick={() => fileInputRef.current?.click()}>Upload a song to start</button>
+                </div>
+              ) : (
+                <ul className="song-lyrics-ul">
+                  {lyrics.map((line, index) => {
+                    const isActive = index === activeLineIndex;
+                    return (
+                      <li key={index} ref={el => (lineRefs.current[index] = el)} onClick={() => handleLineClick(line.startTime)} className={`${isActive ? 'active' : ''}`}>
+                        <div className="lyrics-line">
+                          {line.words.map((word, wIndex) => (
+                            <LyricsWord key={`${index}-${wIndex}`} word={word} currentTime={currentTime} active={isActive} />
+                          ))}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <footer>
+        <div>
+          <div className="timebar">
+            <span className="left-time">{formatTime(currentTime)}</span>
+            <div className="timebar-div">
+              <div className="progress-div">
+                <div style={{ width: `${Math.min(100, (currentTime / audioDuration) * 100)}%` }}></div>
+              </div>
+              <input type="range" min="0" max={audioDuration} value={currentTime} onChange={handleSeek} />
+              <div className="progress-ball" style={{ left: `${Math.min(100, (currentTime / audioDuration) * 100)}%` }}></div>
+            </div>
+            <span className="right-time">{formatTime(audioDuration)}</span>
+          </div>
+          <div className="player-controls">
+            <div className="controls-padding"></div>
+            <div className="controls-buttons">
+              <button className="back-button" onClick={() => skipTime(-5000)} title="Back 5s"><Back size={24} /></button>
+              <button onClick={togglePlayPause} className="start-button">
+                {isPlaying ? <Pause fill="white" size={28} /> : <Play fill="white" className="ml-1" size={28} />}
+              </button>
+              <button className="forward-button" onClick={() => skipTime(5000)} title="Forward 5s"><Next size={24} /></button>
+            </div>
+            <div className="volume-div">
+              <button onClick={() => setIsMuted(!isMuted)} title={isMuted ? "Unmute" : "Mute"}>
+                {isMuted || volume === 0 ? <VolumeMute size={20} /> : <VolumeNotice size={20} />}
+              </button>
+              <div>
+                <div className="volume-bar">
+                    <div style={{ width: `${(isMuted ? 0 : volume) * 100}%` }}></div>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={isMuted ? 0 : volume}
+                  onChange={(e) => {
+                    setVolume(parseFloat(e.target.value));
+                    if (isMuted) setIsMuted(false);
+                  }}
+                  className="volume-input"
+                />
+                <div className="volume-ball" style={{ left: `${(isMuted ? 0 : volume) * 100}%`, transform: 'translateX(-50%)' }}></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </footer>
 
       <form
         className="row"

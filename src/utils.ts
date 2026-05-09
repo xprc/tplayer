@@ -1,6 +1,20 @@
 import { LyricLine, Word } from "./vite-env";
 
 /**
+ * 格式化时间为mm:ss
+ * © 2026 TomsProject Inc.
+ * 
+ * @param {number} ms - 时间毫秒
+ * @returns {string} - 格式化后时间
+ */
+export const formatTime = (ms: number): string => {
+    const totalSeconds = Math.floor(ms / 1000);
+    const m = Math.floor(totalSeconds / 60);
+    const s = totalSeconds % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+};
+
+/**
  * 将mm:ss.xxx转换为ms
  * © 2026 TomsProject Inc.
  * 
