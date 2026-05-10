@@ -8,16 +8,16 @@ interface LyricsWordProps {
 }
 
 function LyricsWord({ word, currentTime, active }: LyricsWordProps) {
-  let percentage = 0, curTime = currentTime * 1000;
+  let percentage = 0;
   const activeColor = '#24abff';
   const inactiveColor = 'rgba(255, 255, 255, 0.8)';
   const style: React.CSSProperties = {};
-  if (curTime >= word.endTime) {
+  if (currentTime >= word.endTime) {
     percentage = 100;
-  } else if (curTime <= word.startTime) {
+  } else if (currentTime <= word.startTime) {
     percentage = 0;
   } else {
-    percentage = ((curTime - word.startTime) / word.duration) * 100;
+    percentage = ((currentTime - word.startTime) / word.duration) * 100;
   }
 
   if (percentage <= 0) {

@@ -91,7 +91,7 @@ function App() {
   const [rawLyrics, setRawLyrics] = useState<string>("");
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [audioDuration, setAudioDuration] = useState<number>(0);
-  const [volume, setVolume] = useState<number>(1);
+  const [volume, setFVolume] = useState<number>(1);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const lyrics: LyricLine[] = useMemo(() => parseLyrics(rawLyrics), [rawLyrics]);
   const [activeLineIndex, setActiveLineIndex] = useState<number>(-1);
@@ -100,10 +100,22 @@ function App() {
   const containerRef = useRef<HTMLDivElement>(null);
   const lineRefs = useRef<(HTMLLIElement | null)[]>([]);
   const userScrollTimeoutRef = useRef<number>(0);
+  const requestRef = useRef<number>(0);
+  const syncRef = useRef({
+    basePosMs: 0,
+    localTimestamp: 0,
+    isPlaying: false
+  });
+
+  const resetSyncBase = (pos: number) => {
+    syncRef.current.basePosMs = pos;
+    syncRef.current.localTimestamp = performance.now();
+  };
 
   async function loadMetaAndCover(path: string) {
     const info = await parseFlac(path);
     setTrackInfo(info);
+    setAudioDuration(info.durationSecs * 1000);
     const cover = await getFlacCover(path);
     setCoverSrc(cover ? `data:${cover.mime};base64,${cover.base64}` : "");
   }
@@ -123,6 +135,81 @@ function App() {
     loadMetaAndCover(path);
   };
 
+  useEffect(() => {
+    (async () => {
+      if (isMuted) await setVolume(0);
+      else await setVolume(volume);
+    })();
+  }, [volume, isMuted]);
+
+  const handleTogglePlay = async () => {
+    const s = await getPlaybackSnapshot();
+    if (!s.hasTrack) {
+      if (!song) return;
+      await loadMetaAndCover(song);
+      await playFlac(song);
+      setIsPlaying(true);
+      return;
+    }
+    if (isPlaying) {
+      await pausePlayback();
+      setIsPlaying(false);
+    } else {
+      await resumePlayback();
+      setIsPlaying(true);
+    }
+  };
+
+  // --- Timer Logic (RequestAnimationFrame) ---
+  const animate = (time: number) => {
+    if (syncRef.current.isPlaying) {
+      const elapsed = time - syncRef.current.localTimestamp;
+      const estimatedPosMs = syncRef.current.basePosMs + elapsed;
+      setCurrentTime(estimatedPosMs);
+      requestRef.current = requestAnimationFrame(animate);
+    }
+  };
+
+  useEffect(() => {
+    let intervalId: number;
+    if (isPlaying) {
+      syncRef.current.isPlaying = true;
+      getPlaybackSnapshot().then((s) => {
+        resetSyncBase(s.positionMs);
+        setSnap(s);
+      });
+
+      intervalId = setInterval(async () => {
+        const s = await getPlaybackSnapshot();
+        resetSyncBase(s.positionMs);
+        setSnap(s);
+        if (s.paused) {
+          setIsPlaying(false);
+        }
+      }, 500);
+    } else {
+      syncRef.current.isPlaying = false;
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [isPlaying]);
+
+  useEffect(() => {
+    if (isPlaying) {
+      syncRef.current.localTimestamp = performance.now();
+      requestRef.current = requestAnimationFrame(animate);
+    } else {
+      if (requestRef.current) {
+        cancelAnimationFrame(requestRef.current);
+      }
+    }
+    return () => {
+      if (requestRef.current) cancelAnimationFrame(requestRef.current);
+    };
+  }, [isPlaying, song]);
+
   // --- Auto Scrolling ---
   useEffect(() => {
     if (isUserScrolling) return;
@@ -138,6 +225,37 @@ function App() {
     }
   }, [activeLineIndex, isUserScrolling]);
 
+  // Lyrics focusing logic
+  useEffect(() => {
+    // In a line, no need to change
+    const strictIndex = lyrics.findIndex(line => 
+      currentTime >= line.startTime && currentTime < line.endTime
+    );
+    if (strictIndex !== -1) {
+      setActiveLineIndex(strictIndex);
+      return;
+    }
+
+    // Goto next line
+    const PRE_TRANSITION_MS = 500;
+    const nextIndex = lyrics.findIndex(line => line.startTime > currentTime);
+    if (nextIndex !== -1) {
+      const nextLine = lyrics[nextIndex];
+      if (currentTime >= nextLine.startTime - PRE_TRANSITION_MS) {
+        setActiveLineIndex(nextIndex);
+      } else {
+        setActiveLineIndex(nextIndex - 1);
+      }
+    } else {
+      // Last Line
+      if (lyrics.length > 0) {
+        setActiveLineIndex(lyrics.length - 1);
+      } else {
+        setActiveLineIndex(-1);
+      }
+    }
+  }, [currentTime, lyrics]);
+
   // Listen to wheel/touch events on the container
   const handleUserInteraction = () => {
     setIsUserScrolling(true);
@@ -150,57 +268,28 @@ function App() {
   };
 
   // Click on a lyric line to jump to that time
-  const handleLineClick = (startTime: number) => {
+  const handleLineClick = async (startTime: number) => {
     // Jump slightly before the line starts (e.g. 100ms) to ensure the first word isn't cut off visually
     const seekTime = Math.max(0, startTime);
     setCurrentTime(seekTime);
-    
-    // if (audioSrc && audioRef.current) {
-    //     audioRef.current.currentTime = seekTime / 1000;
-    // }
+    resetSyncBase(seekTime);
+    await seekTo(seekTime);
   };
 
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSeek = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const newTime = Number(e.target.value);
     setCurrentTime(newTime);
-    
-    // if (audioSrc && audioRef.current) {
-    //     audioRef.current.currentTime = newTime / 1000;
-    // }
+    resetSyncBase(newTime);
+    await seekTo(newTime);
   };
 
-  const skipTime = (ms: number) => {
+  const skipTime = async (ms: number) => {
     let newTime = currentTime + ms;
     newTime = Math.max(0, Math.min(newTime, audioDuration));
-      
     setCurrentTime(newTime);
-    // if (audioSrc && audioRef.current) {
-    //   audioRef.current.currentTime = newTime / 1000;
-    // }
+    resetSyncBase(newTime);
+    await seekTo(newTime);
   };
-
-  async function togglePlayPause() {
-    const s = await getPlaybackSnapshot();
-    setSnap(s);
-
-    if (!s.hasTrack) {
-      if (!song) return;
-      await loadMetaAndCover(song);
-      await playFlac(song);
-      const s2 = await getPlaybackSnapshot();
-      setSnap(s2);
-      return;
-    }
-
-    if (s.paused) {
-      await resumePlayback();
-    } else {
-      await pausePlayback();
-    }
-
-    const s2 = await getPlaybackSnapshot();
-    setSnap(s2);
-  }
 
   return (
     <main className="container">
@@ -279,7 +368,7 @@ function App() {
             <div className="controls-padding"></div>
             <div className="controls-buttons">
               <button className="back-button" onClick={() => skipTime(-5000)} title="Back 5s"><Back size={24} /></button>
-              <button onClick={togglePlayPause} className="start-button">
+              <button onClick={handleTogglePlay} className="start-button">
                 {isPlaying ? <Pause fill="white" size={28} /> : <Play fill="white" className="ml-1" size={28} />}
               </button>
               <button className="forward-button" onClick={() => skipTime(5000)} title="Forward 5s"><Next size={24} /></button>
@@ -299,7 +388,7 @@ function App() {
                   step="0.01"
                   value={isMuted ? 0 : volume}
                   onChange={(e) => {
-                    setVolume(parseFloat(e.target.value));
+                    setFVolume(parseFloat(e.target.value));
                     if (isMuted) setIsMuted(false);
                   }}
                   className="volume-input"

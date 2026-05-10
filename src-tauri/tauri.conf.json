@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "TomsProject Music Player",
-        "width": 800,
-        "height": 600
+        "width": 750,
+        "height": 640
       }
     ],
     "security": {
