@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import { Back, FileMusic, FileTxtOne, Music, Next, Pause, Play, VolumeMute, VolumeNotice } from "@icon-park/react";
-import type { CoverImage, FlacFileInfo, LyricLine, PlaybackSnapshot, Word } from "./vite-env";
+import type { CoverImage, FlacFileInfo, LyricLine, PlaybackSnapshot } from "./vite-env";
 import LyricsWord from "./LyricsWord";
 import { formatTime, parseLyrics } from "./utils";
 import '@icon-park/react/styles/index.css';
