@@ -66,6 +66,7 @@ struct AudioEngine {
     sink: Player,
     current_track: Option<PathBuf>,
     duration: Option<Duration>,
+    pos_offset_ms: u64,
 }
 
 struct AppState {
@@ -82,6 +83,7 @@ impl AudioEngine {
             sink,
             current_track: None,
             duration: None,
+            pos_offset_ms: 0,
         })
     }
 
@@ -179,6 +181,7 @@ fn play_flac(path: String, state: tauri::State<AppState>) -> Result<(), String> 
     let duration = decoder.total_duration();
 
     audio.rebuild_sink();
+    audio.pos_offset_ms = 0;
     audio.sink.append(decoder);
     audio.sink.play();
     audio.current_track = Some(path_buf);
@@ -231,6 +234,7 @@ fn stop_playback(state: tauri::State<AppState>) -> Result<(), String> {
     audio.rebuild_sink();
     audio.current_track = None;
     audio.duration = None;
+    audio.pos_offset_ms = 0;
     Ok(())
 }
 
@@ -249,16 +253,29 @@ fn get_volume(state: tauri::State<AppState>) -> Result<f32, String> {
 
 #[tauri::command]
 fn seek_to(position_ms: u64, state: tauri::State<AppState>) -> Result<(), String> {
-    let audio = state.audio.lock().map_err(|e| e.to_string())?;
+    let mut audio = state.audio.lock().map_err(|e| e.to_string())?;
+    let path = audio
+        .current_track
+        .clone()
+        .ok_or_else(|| "No track is currently loaded".to_string())?;
+    let volume = audio.sink.volume();
+    let was_paused = audio.sink.is_paused();
 
-    if audio.current_track.is_none() {
-        return Err("No track is currently loaded".to_string());
+    audio.rebuild_sink();
+
+    let file = File::open(&path).map_err(|e| e.to_string())?;
+    let reader = BufReader::new(file);
+    let decoder = Decoder::try_from(reader).map_err(|e| e.to_string())?;
+    let source = decoder.skip_duration(Duration::from_millis(position_ms));
+
+    audio.sink.append(source);
+    audio.pos_offset_ms = position_ms;
+    audio.sink.set_volume(volume);
+    if was_paused {
+        audio.sink.pause();
+    } else {
+        audio.sink.play();
     }
-
-    audio
-        .sink
-        .try_seek(Duration::from_millis(position_ms))
-        .map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -272,7 +289,7 @@ fn get_playback_snapshot(state: tauri::State<AppState>) -> Result<PlaybackSnapsh
             .current_track
             .as_ref()
             .map(|p| p.to_string_lossy().to_string()),
-        position_ms: audio.sink.get_pos().as_millis() as u64,
+        position_ms: audio.pos_offset_ms + audio.sink.get_pos().as_millis() as u64,
         duration_ms: audio.duration.map(|d| d.as_millis() as u64),
         volume: audio.sink.volume(),
         paused: audio.sink.is_paused(),

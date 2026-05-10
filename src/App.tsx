@@ -96,6 +96,8 @@ function App() {
   const lyrics: LyricLine[] = useMemo(() => parseLyrics(rawLyrics), [rawLyrics]);
   const [activeLineIndex, setActiveLineIndex] = useState<number>(-1);
   const [isUserScrolling, setIsUserScrolling] = useState<boolean>(false);
+  // Linting
+  void snap;
 
   const containerRef = useRef<HTMLDivElement>(null);
   const lineRefs = useRef<(HTMLLIElement | null)[]>([]);
