@@ -188,6 +188,10 @@ function App() {
         if (s.paused) {
           setIsPlaying(false);
         }
+        if (s.ended) {
+          setIsPlaying(false);
+          await stopPlayback();
+        }
       }, 500);
     } else {
       syncRef.current.isPlaying = false;

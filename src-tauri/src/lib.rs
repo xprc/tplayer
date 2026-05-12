@@ -57,6 +57,7 @@ struct PlaybackSnapshot {
     duration_ms: Option<u64>,
     volume: f32,
     paused: bool,
+    ended: bool,
     has_track: bool,
     server_ts_ms: u64,
 }
@@ -293,6 +294,7 @@ fn get_playback_snapshot(state: tauri::State<AppState>) -> Result<PlaybackSnapsh
         duration_ms: audio.duration.map(|d| d.as_millis() as u64),
         volume: audio.sink.volume(),
         paused: audio.sink.is_paused(),
+        ended: audio.current_track.is_some() && audio.sink.empty(),
         has_track: audio.current_track.is_some(),
         server_ts_ms: unix_ts_ms()?,
     })

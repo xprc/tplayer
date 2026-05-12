@@ -24,6 +24,7 @@ export type PlaybackSnapshot = {
   durationMs: number | null;
   volume: number;
   paused: boolean;
+  ended: boolean;
   hasTrack: boolean;
   serverTsMs: number;
 };
