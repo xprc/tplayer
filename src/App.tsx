@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { load, type Store } from "@tauri-apps/plugin-store";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import { Back, FileMusic, FileTxtOne, Music, Next, Pause, Play, VolumeMute, VolumeNotice } from "@icon-park/react";
 import type { CoverImage, FlacFileInfo, LyricLine, PlaybackSnapshot } from "./vite-env";
@@ -82,6 +83,12 @@ export async function readAudioFile(): Promise<string | null> {
   return selected;
 }
 
+let storePromise: Promise<Store> | null = null;
+export function getStore(): Promise<Store> {
+  if (!storePromise) storePromise = load('settings.json', { defaults: {}, autoSave: 300 });
+  return storePromise;
+}
+
 function App() {
   const [song, setSong] = useState("");
   const [currentTime, setCurrentTime] = useState<number>(0);
@@ -91,7 +98,7 @@ function App() {
   const [rawLyrics, setRawLyrics] = useState<string>("");
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [audioDuration, setAudioDuration] = useState<number>(0);
-  const [volume, setFVolume] = useState<number>(1);
+  const [volume, setFVolume] = useState<number>(0.8);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const lyrics: LyricLine[] = useMemo(() => parseLyrics(rawLyrics), [rawLyrics]);
   const [activeLineIndex, setActiveLineIndex] = useState<number>(-1);
@@ -136,6 +143,22 @@ function App() {
     setSong(path);
     loadMetaAndCover(path);
   };
+
+  // --- Volume logic ---
+  useEffect(() => {
+    (async () => {
+      const store = await getStore();
+      const savedVolume = await store.get<number>('volume');
+      if (savedVolume) setFVolume(savedVolume);
+    })();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      const store = await getStore();
+      await store.set("volume", volume);
+    })();
+  }, [volume]);
 
   useEffect(() => {
     (async () => {

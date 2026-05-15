@@ -13,10 +13,17 @@
     {
       "identifier": "fs:scope",
       "allow": [
-        { "path": "$DOCUMENT/*" },
-        { "path": "$DOWNLOAD/*" },
-        { "path": "$DESKTOP/*" }
+        {
+          "path": "$DOCUMENT/*"
+        },
+        {
+          "path": "$DOWNLOAD/*"
+        },
+        {
+          "path": "$DESKTOP/*"
+        }
       ]
-    }
+    },
+    "store:default"
   ]
 }
