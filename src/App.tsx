@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { open } from "@tauri-apps/plugin-dialog";
 import { load, type Store } from "@tauri-apps/plugin-store";
 import { readTextFile } from "@tauri-apps/plugin-fs";
-import { Back, FileMusic, FileTxtOne, Music, Next, Pause, Play, VolumeMute, VolumeNotice } from "@icon-park/react";
+import { Back, DeleteThree, FileMusic, FileTxtOne, Music, Next, Pause, Play, TextStyle, VolumeMute, VolumeNotice } from "@icon-park/react";
 import type { CoverImage, FlacFileInfo, LyricLine, PlaybackSnapshot } from "./vite-env";
 import LyricsWord from "./LyricsWord";
 import { formatTime, parseLyrics } from "./utils";
@@ -97,6 +98,7 @@ function App() {
   const [snap, setSnap] = useState<PlaybackSnapshot | null>(null);
   const [rawLyrics, setRawLyrics] = useState<string>("");
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [showLyrics, setShowLyrics] = useState<boolean>(false);
   const [audioDuration, setAudioDuration] = useState<number>(0);
   const [volume, setFVolume] = useState<number>(0.8);
   const [isMuted, setIsMuted] = useState<boolean>(false);
@@ -238,6 +240,15 @@ function App() {
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
   }, [isPlaying, song]);
+
+  useEffect(() => {
+    (async () => {
+      const lyricWindow = await WebviewWindow.getByLabel("lyrics");
+      if (!lyricWindow) return;
+      if (showLyrics) await lyricWindow?.show();
+      else await lyricWindow?.hide();
+    })();
+  }, [showLyrics]);
 
   // --- Auto Scrolling ---
   useEffect(() => {
@@ -403,6 +414,9 @@ function App() {
               <button className="forward-button" onClick={() => skipTime(5000)} title="Forward 5s"><Next size={24} /></button>
             </div>
             <div className="volume-div">
+              <button onClick={() => setShowLyrics(!showLyrics)} title={showLyrics ? "Close Lyrics" : "Show Lyrics"}>
+                {showLyrics ? <DeleteThree size={20} /> : <TextStyle size={20} />}
+              </button>
               <button onClick={() => setIsMuted(!isMuted)} title={isMuted ? "Unmute" : "Mute"}>
                 {isMuted || volume === 0 ? <VolumeMute size={20} /> : <VolumeNotice size={20} />}
               </button>
