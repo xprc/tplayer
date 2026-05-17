@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { emitTo, listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { open } from "@tauri-apps/plugin-dialog";
 import { load, type Store } from "@tauri-apps/plugin-store";
@@ -112,6 +113,7 @@ function App() {
   const lineRefs = useRef<(HTMLLIElement | null)[]>([]);
   const userScrollTimeoutRef = useRef<number>(0);
   const requestRef = useRef<number>(0);
+  const lastEmitRef = useRef<number>(0);
   const syncRef = useRef({
     basePosMs: 0,
     localTimestamp: 0,
@@ -330,6 +332,47 @@ function App() {
     resetSyncBase(newTime);
     await seekTo(newTime);
   };
+
+  // --- Sync with Lyrics window logic ---
+  const emitLyricsState = async () => {
+    await emitTo("lyrics", "lyrics:state", {
+      rawLyrics,
+      currentTime,
+      activeLineIndex,
+    });
+  };
+
+  useEffect(() => {
+    let unlisten: null | (() => void) = null;
+    (async () => {
+      unlisten = await listen("lyrics:ready", async () => {
+        await emitLyricsState();
+      });
+    })();
+
+    return () => {
+      unlisten?.();
+    };
+  }, [rawLyrics, currentTime, activeLineIndex]);
+
+  useEffect(() => {
+    emitTo("lyrics", "lyrics:state", {
+      rawLyrics,
+      currentTime,
+      activeLineIndex,
+    });
+  }, [rawLyrics]);
+
+  useEffect(() => {
+    const now = performance.now();
+    if (now - lastEmitRef.current < 60) return;
+    lastEmitRef.current = now;
+
+    emitTo("lyrics", "lyrics:time", {
+      currentTime,
+      activeLineIndex,
+    });
+  }, [currentTime, activeLineIndex]);
 
   return (
     <main className="container">

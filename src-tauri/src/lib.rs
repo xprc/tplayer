@@ -14,6 +14,7 @@ use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
+use tauri::{RunEvent, WindowEvent};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -305,6 +306,7 @@ pub fn run() {
     let audio = AudioEngine::new().expect("failed to initialize audio engine");
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
@@ -324,6 +326,16 @@ pub fn run() {
             get_playback_snapshot,
             get_flac_cover,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app, event| {
+            match event {
+                RunEvent::WindowEvent { label, event: WindowEvent::Destroyed, .. } => {
+                    if label == "main" {
+                        app.exit(0);
+                    }
+                }
+                _ => {}
+            }
+        });
 }

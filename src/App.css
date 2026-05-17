@@ -418,3 +418,14 @@ footer > div {
   position: absolute;
   pointer-events: none;
 }
+
+.lyrics-bar {
+  width: 100vw;
+  height: 100vh;
+  box-sizing: border-box;
+  background-color: rgba(42, 42, 48, 0.9);
+  backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid #000000;
+  border-radius: 12px;
+  cursor: grab;
+}

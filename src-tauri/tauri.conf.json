@@ -19,7 +19,7 @@
       {
         "label": "lyrics",
         "title": "Lyrics",
-        "width": 800,
+        "width": 700,
         "height": 100,
         "decorations": false,
         "transparent": true,
