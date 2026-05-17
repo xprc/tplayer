@@ -1,6 +1,6 @@
 [package]
 name = "tplayer"
-version = "0.1.0"
+version = "0.1.1"
 description = "A music player in Tauri."
 authors = ["TomsProject"]
 edition = "2021"
